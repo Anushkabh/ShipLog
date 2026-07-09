@@ -1,0 +1,60 @@
+[project]
+name = "shiplog-api"
+version = "0.1.0"
+description = "Shiplog API — open-source release notes & changelog platform"
+requires-python = ">=3.12"
+dependencies = [
+    # Web framework + ASGI
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "mangum>=0.19",             # ASGI -> Lambda adapter (prod)
+    "python-multipart>=0.0.12", # form parsing (OAuth callbacks, uploads)
+    # Data
+    "sqlalchemy>=2.0.36",
+    "greenlet>=3.1",            # required by SQLAlchemy's async bridge
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pydantic[email]>=2.10",
+    "pydantic-settings>=2.7",
+    # Auth / crypto
+    "authlib>=1.4",             # GitHub OAuth dance
+    "pyjwt>=2.10",              # session cookies
+    "cryptography>=44",         # AES-256-GCM for BYOK keys
+    "httpx>=0.28",              # GitHub API + outbound calls
+    # Content
+    "markdown-it-py>=3.0",      # markdown -> HTML
+    "nh3>=0.2.19",              # HTML sanitize (Ammonia bindings) — the security boundary
+    # Infra clients
+    "redis>=5.2",               # Upstash (over TLS) / local redis
+    "boto3>=1.35",              # SQS + SES (prod)
+    "litellm>=1.55",            # BYOK AI provider abstraction (imported lazily)
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# Enums use the (str, Enum) convention throughout (matches the provided
+# models.py); we don't require StrEnum.
+ignore = ["UP042"]
+
+[tool.ruff.lint.per-file-ignores]
+# models.py is kept verbatim from the design doc, including a couple of long
+# inline comments.
+"app/models.py" = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.uv]
+package = false
