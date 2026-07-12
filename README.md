@@ -56,7 +56,11 @@ consumer) → fetch the widget feed and assert it matches the contract
 - ✅ Widget feed endpoint (Redis-cached) — serves `widget.js`
 - ✅ Subscribers (double opt-in) + HMAC unsubscribe + email fan-out consumer
 - ✅ Queue abstraction (local in-process ↔ SQS) — flip one env var
-- 🚧 GitHub App ingestion + AI drafting (LiteLLM, SSE)
-- 🚧 EventBridge scheduler, API keys + rate limiting, analytics rollup
+- ✅ GitHub App ingestion: signed webhook (HMAC) + both idempotency layers → `ingested_items`
+- ✅ AI drafting (LiteLLM BYOK, AES-256-GCM key at rest, SSE streaming endpoint)
+- 🚧 EventBridge scheduler (SKIP LOCKED), API keys + rate limiting, analytics rollup
 - 🚧 AWS CDK infra, Next.js dashboard + public sites
+
+Smoke tests: `scripts/smoke.py` (product loop) and `scripts/smoke_ingest.py`
+(ingestion + idempotency) — both verified passing.
 ```

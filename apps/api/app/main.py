@@ -39,16 +39,28 @@ async def health() -> dict:
 
 
 # ── Routers ───────────────────────────────────────────────────────────────
-from app.routers import auth, projects, releases, subscribers, widget  # noqa: E402
+from app.routers import (  # noqa: E402
+    ai,
+    auth,
+    integrations,
+    projects,
+    releases,
+    subscribers,
+    webhooks,
+    widget,
+)
 
 app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(releases.router)
 app.include_router(widget.router)
 app.include_router(subscribers.router)
+app.include_router(webhooks.router)
+app.include_router(integrations.router)
+app.include_router(ai.router)
 
 # ── Register local queue consumers (self-register on import) ──────────────
-from app.consumers import email_fanout  # noqa: E402,F401
+from app.consumers import email_fanout, webhook_proc  # noqa: E402,F401
 
 # ── Lambda entrypoint ─────────────────────────────────────────────────────
 try:
