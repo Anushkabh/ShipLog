@@ -10,11 +10,17 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from app.config import settings
+
+# In prod the widget bundle sits on a CDN; locally the API serves it so the
+# embed snippet works out of the box (packages/widget/widget.js at the repo root).
+_WIDGET_JS = Path(__file__).resolve().parents[3] / "packages" / "widget" / "widget.js"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -57,6 +63,18 @@ app.add_middleware(
 @app.get("/health", tags=["meta"])
 async def health() -> dict:
     return {"status": "ok", "env": settings.env}
+
+
+@app.get("/widget.js", include_in_schema=False)
+async def widget_js() -> FileResponse:
+    return FileResponse(
+        _WIDGET_JS,
+        media_type="application/javascript",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "public, max-age=300",
+        },
+    )
 
 
 # ── Routers ───────────────────────────────────────────────────────────────

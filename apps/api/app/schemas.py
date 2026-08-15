@@ -111,6 +111,7 @@ class FeedTag(BaseModel):
 
 
 class FeedRelease(BaseModel):
+    id: str                        # for the widget's view-tracking POST
     publishedAt: datetime          # widget reads releases[0].publishedAt as newest
     title: str
     url: str

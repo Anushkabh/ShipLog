@@ -44,6 +44,7 @@ def _site_url(project: Project) -> str:
 
 def _to_feed_release(r: Release, site: str) -> FeedRelease:
     return FeedRelease(
+        id=r.id,
         publishedAt=r.published_at,
         title=r.title,
         url=f"{site}/{r.slug}",
