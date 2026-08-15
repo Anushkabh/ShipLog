@@ -1,32 +1,43 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import { Github, Loader2, Rocket } from "lucide-react";
 
 import { api, API_URL } from "@/lib/api";
-import { useSession } from "@/components/auth/session";
+import { SessionProvider, useSession } from "@/components/auth/session";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const { user, loading, refresh } = useSession();
+  return (
+    <SessionProvider>
+      <LoginInner />
+    </SessionProvider>
+  );
+}
+
+// A hard navigation (not router.replace) guarantees the address bar lands on
+// /projects and the dashboard boots fresh as authenticated.
+function toDashboard() {
+  window.location.replace("/projects");
+}
+
+function LoginInner() {
+  const { user, loading } = useSession();
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   // Already signed in → bounce to the dashboard.
   React.useEffect(() => {
-    if (!loading && user) router.replace("/projects");
-  }, [loading, user, router]);
+    if (!loading && user) toDashboard();
+  }, [loading, user]);
 
   async function devLogin() {
     setPending(true);
     setError(null);
     try {
       await api.devLogin();
-      refresh();
-      router.replace("/projects");
+      toDashboard();
     } catch {
       setError("Dev login failed — is the API running on " + API_URL + "?");
       setPending(false);

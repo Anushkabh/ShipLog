@@ -3,11 +3,11 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
-import { Check, Loader2, Send, Sparkles } from "lucide-react";
+import { AlertCircle, Check, Loader2, Send, Sparkles, Square } from "lucide-react";
 
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, streamDraft } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { Project, Release } from "@/lib/types";
+import type { CredentialStatus, Project, Release } from "@/lib/types";
 import { Topbar } from "@/components/shell/topbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +41,10 @@ export function ReleaseEditor({
     releaseId ? `/api/projects/${projectId}/releases/${releaseId}` : null,
     () => api.release(projectId, releaseId!),
   );
+  const { data: cred } = useSWR<CredentialStatus>(
+    `/api/projects/${projectId}/ai/credential`,
+    () => api.aiCredential(projectId),
+  );
 
   const [currentId, setCurrentId] = React.useState<string | undefined>(
     releaseId,
@@ -58,6 +62,10 @@ export function ReleaseEditor({
   const [publishing, setPublishing] = React.useState(false);
   const [savedAt, setSavedAt] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+
+  const [aiStreaming, setAiStreaming] = React.useState(false);
+  const [aiNotice, setAiNotice] = React.useState<string | null>(null);
+  const aiAbort = React.useRef<AbortController | null>(null);
 
   // Hydrate from a loaded release exactly once.
   const hydrated = React.useRef(false);
@@ -137,6 +145,55 @@ export function ReleaseEditor({
     }
   }
 
+  async function generate() {
+    // No key yet → send them to set one up rather than failing on 400.
+    if (!cred?.configured) {
+      router.push(`/projects/${projectId}/ai`);
+      return;
+    }
+    setAiNotice(null);
+    setAiStreaming(true);
+    const ctrl = new AbortController();
+    aiAbort.current = ctrl;
+    // Separate the AI draft from anything already written.
+    setBody((prev) => (prev.trim() ? prev.replace(/\s*$/, "") + "\n\n" : prev));
+    try {
+      await streamDraft(projectId, {
+        signal: ctrl.signal,
+        onChunk: (t) => setBody((prev) => prev + t),
+        // AI suggests a title/version — adopt them only when the user hasn't
+        // already typed their own, so a draft never clobbers manual edits.
+        onMeta: (meta) => {
+          if (meta.title) {
+            setTitle((prev) => {
+              const next = prev.trim() ? prev : meta.title!;
+              if (isNew && !slugEdited && !prev.trim()) setSlug(slugify(meta.title!));
+              return next;
+            });
+          }
+          if (meta.version) {
+            setVersion((prev) => (prev.trim() ? prev : meta.version!));
+          }
+        },
+        onError: (msg) => setAiNotice(msg),
+      });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        // 400 = "No AI provider configured" / "No new merged PRs since…"
+        setAiNotice(err.message);
+      } else if ((err as { name?: string })?.name !== "AbortError") {
+        setAiNotice("AI drafting failed. Please try again.");
+      }
+    } finally {
+      setAiStreaming(false);
+      aiAbort.current = null;
+    }
+  }
+
+  function stopGenerate() {
+    aiAbort.current?.abort();
+  }
+
   const canSave = title.trim().length > 0 && (!isNew || slug.length > 0);
 
   return (
@@ -201,17 +258,38 @@ export function ReleaseEditor({
           <div className="flex min-w-0 flex-col border-b border-border md:border-b-0 md:border-r">
             <PaneHead>
               Markdown
-              <Button
-                variant="accent"
-                size="sm"
-                className="ml-auto h-7"
-                disabled
-                title="AI drafting arrives in the next milestone"
-              >
-                <Sparkles className="size-3.5" />
-                Draft from merged PRs
-              </Button>
+              {aiStreaming ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto h-7"
+                  onClick={stopGenerate}
+                >
+                  <Square className="size-3 fill-current" />
+                  Stop drafting
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="accent"
+                  size="sm"
+                  className="ml-auto h-7"
+                  onClick={generate}
+                >
+                  <Sparkles className="size-3.5" />
+                  {cred?.configured
+                    ? "Draft from merged PRs"
+                    : "Set up AI drafting"}
+                </Button>
+              )}
             </PaneHead>
+            {aiNotice && (
+              <div className="flex items-start gap-2 border-b border-border bg-status-scheduled-bg px-5 py-2 text-[12.5px] text-status-scheduled">
+                <AlertCircle className="mt-0.5 size-3.5 flex-none" />
+                <span>{aiNotice}</span>
+              </div>
+            )}
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}

@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.deps import CurrentUser, DbDep, require_project
 from app.models import OrganizationMember, OrgRole, Project
-from app.schemas import ProjectCreate, ProjectOut
+from app.schemas import ProjectCreate, ProjectOut, ProjectProfileUpdate
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -57,4 +57,19 @@ async def create_project(body: ProjectCreate, user: CurrentUser, db: DbDep) -> P
 async def get_project(
     project: Annotated[Project, Depends(require_project(OrgRole.VIEWER))],
 ) -> Project:
+    return project
+
+
+@router.put("/{project_id}/profile", response_model=ProjectOut)
+async def update_profile(
+    body: ProjectProfileUpdate,
+    project: Annotated[Project, Depends(require_project(OrgRole.EDITOR))],
+    db: DbDep,
+) -> Project:
+    """Set the product context that grounds AI drafting (name is the project name)."""
+    project.product_summary = (body.product_summary or "").strip() or None
+    project.audience = (body.audience or "").strip() or None
+    project.tone = (body.tone or "").strip() or None
+    await db.commit()
+    await db.refresh(project)
     return project

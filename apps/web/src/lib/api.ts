@@ -7,15 +7,19 @@
  */
 
 import type {
+  CredentialIn,
   CredentialStatus,
   Integration,
+  IntegrationCreate,
   Org,
   Project,
   ProjectCreate,
+  ProjectProfileUpdate,
   PublishRequest,
   Release,
   ReleaseCreate,
   ReleaseUpdate,
+  SubscribeResult,
   User,
 } from "./types";
 
@@ -109,6 +113,8 @@ export const api = {
   project: (id: string) => request<Project>(`/api/projects/${id}`),
   createProject: (body: ProjectCreate) =>
     request<Project>("/api/projects", { method: "POST", body }),
+  updateProjectProfile: (id: string, body: ProjectProfileUpdate) =>
+    request<Project>(`/api/projects/${id}/profile`, { method: "PUT", body }),
 
   // ── Releases ──────────────────────────────────────────────────────────
   releases: (projectId: string) =>
@@ -135,9 +141,118 @@ export const api = {
       method: "DELETE",
     }),
 
-  // ── AI + integrations (surfaced next milestone) ───────────────────────
+  // ── Public changelog (no auth; keyed by public_key) ───────────────────
+  subscribe: (publicKey: string, email: string) =>
+    request<SubscribeResult>(`/api/v1/widget/${publicKey}/subscribe`, {
+      method: "POST",
+      body: { email },
+    }),
+
+  // ── AI (BYOK credential) ──────────────────────────────────────────────
   aiCredential: (projectId: string) =>
     request<CredentialStatus>(`/api/projects/${projectId}/ai/credential`),
+  setAiCredential: (projectId: string, body: CredentialIn) =>
+    request<CredentialStatus>(`/api/projects/${projectId}/ai/credential`, {
+      method: "PUT",
+      body,
+    }),
+
+  // ── Integrations (GitHub repos) ───────────────────────────────────────
   integrations: (projectId: string) =>
     request<Integration[]>(`/api/projects/${projectId}/integrations`),
+  createIntegration: (projectId: string, body: IntegrationCreate) =>
+    request<Integration>(`/api/projects/${projectId}/integrations`, {
+      method: "POST",
+      body,
+    }),
+  deleteIntegration: (projectId: string, id: string) =>
+    request<void>(`/api/projects/${projectId}/integrations/${id}`, {
+      method: "DELETE",
+    }),
+  syncIntegration: (projectId: string, id: string) =>
+    request<{ ingested: number }>(
+      `/api/projects/${projectId}/integrations/${id}/sync`,
+      { method: "POST" },
+    ),
 };
+
+// ── AI draft streaming (SSE over fetch) ───────────────────────────────────
+export interface DraftMeta {
+  title?: string;
+  version?: string;
+}
+
+export interface DraftStreamHandlers {
+  onChunk: (text: string) => void;
+  onMeta?: (meta: DraftMeta) => void;
+  onError?: (message: string) => void;
+  signal?: AbortSignal;
+}
+
+/**
+ * Stream an AI draft from merged PRs. The API emits SSE frames
+ * `data: <chunk>` (newlines escaped as literal \n), an `event: error` frame on
+ * provider failure, and a final `data: [DONE]`. Uses fetch (not EventSource)
+ * so the request is a credentialed POST. Throws ApiError on 400 (no provider
+ * configured / no new PRs) before any streaming begins.
+ */
+export async function streamDraft(
+  projectId: string,
+  handlers: DraftStreamHandlers,
+): Promise<void> {
+  const res = await fetch(buildUrl(`/api/projects/${projectId}/ai/generate`), {
+    method: "POST",
+    credentials: "include",
+    signal: handlers.signal,
+  });
+
+  if (!res.ok || !res.body) {
+    let detail = res.statusText;
+    try {
+      const data = await res.json();
+      if (typeof data?.detail === "string") detail = data.detail;
+    } catch {
+      /* non-JSON */
+    }
+    throw new ApiError(res.status, detail);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let sep: number;
+    // SSE frames are separated by a blank line.
+    while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+
+      let event = "message";
+      let data = "";
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) data += line.slice(5).replace(/^ /, "");
+      }
+
+      if (event === "error") {
+        handlers.onError?.(data.replace(/\\n/g, "\n"));
+        return;
+      }
+      if (event === "meta") {
+        try {
+          handlers.onMeta?.(JSON.parse(data) as DraftMeta);
+        } catch {
+          /* ignore malformed meta */
+        }
+        continue;
+      }
+      if (data === "[DONE]") return;
+      handlers.onChunk(data.replace(/\\n/g, "\n"));
+    }
+  }
+}

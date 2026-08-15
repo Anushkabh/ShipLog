@@ -7,8 +7,11 @@ via an embeddable widget, and broadcast to email subscribers.
 
 **Stack:** FastAPI (Python 3.12, async) · SQLAlchemy 2.0 + Postgres (Neon) ·
 Next.js 15 · AWS Lambda/SQS/EventBridge (CDK) · Upstash Redis · SES. Designed to
-run at effectively **zero cost** on always-free tiers. See
-[`ARCHITECTURE_v2.md`](ARCHITECTURE_v2.md) for the full design and rationale.
+run at effectively **zero cost** on always-free tiers.
+
+**Docs:** [Overview](docs/OVERVIEW.md) · [Setup guide](docs/SETUP.md) ·
+[Architecture](docs/ARCHITECTURE.md) · [Status & roadmap](docs/STATUS.md) ·
+[Production deployment](docs/DEPLOYMENT.md)
 
 ## Monorepo layout
 

@@ -5,7 +5,7 @@
 
 export type OrgRole = "owner" | "admin" | "editor" | "viewer";
 export type ReleaseStatus = "draft" | "scheduled" | "published";
-export type AiProvider = "openai" | "anthropic" | "google" | "groq";
+export type AiProvider = "openai" | "anthropic" | "gemini" | "groq";
 export type IntegrationProvider = "github";
 
 export interface User {
@@ -30,7 +30,16 @@ export interface Project {
   custom_domain: string | null;
   domain_verified: boolean;
   email_enabled: boolean;
+  product_summary: string | null;
+  audience: string | null;
+  tone: string | null;
   created_at: string;
+}
+
+export interface ProjectProfileUpdate {
+  product_summary?: string | null;
+  audience?: string | null;
+  tone?: string | null;
 }
 
 export interface Tag {
@@ -60,6 +69,16 @@ export interface Release {
 export interface CredentialStatus {
   configured: boolean;
   provider: AiProvider | null;
+}
+
+export interface CredentialIn {
+  provider: AiProvider;
+  api_key: string;
+}
+
+export interface IntegrationCreate {
+  installation_id: string;
+  repo_full_name: string;
 }
 
 export interface Integration {
@@ -95,3 +114,26 @@ export interface PublishRequest {
   scheduled_at?: string | null;
   broadcast_email?: boolean;
 }
+
+// ── Public widget feed (contract from packages/widget/widget.js) ─────────
+export interface FeedTag {
+  name: string;
+  color: string;
+}
+
+export interface FeedRelease {
+  publishedAt: string;
+  title: string;
+  url: string;
+  bodyHtml: string;
+  tags: FeedTag[];
+}
+
+export interface WidgetFeed {
+  releases: FeedRelease[];
+  siteUrl: string;
+}
+
+export type SubscribeResult = {
+  status: "verification_sent" | "already_subscribed";
+};

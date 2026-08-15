@@ -93,13 +93,11 @@ export function Sidebar() {
           href: `/projects/${projectId}/integrations`,
           label: "Integrations",
           icon: Plug,
-          soon: true,
         },
         {
           href: `/projects/${projectId}/ai`,
           label: "AI drafts",
           icon: Sparkles,
-          soon: true,
         },
         {
           href: `/projects/${projectId}/settings`,

@@ -49,6 +49,20 @@ async def bust_feed(public_key: str) -> None:
         pass
 
 
+# ── Rate limiting: fixed-window INCR + EXPIRE ─────────────────────────────
+async def rate_limit(key: str, limit: int, window_seconds: int) -> bool:
+    """True if this hit is allowed. Fail-open: Redis down must not block users."""
+    try:
+        c = client()
+        full = f"rl:{key}"
+        count = await c.incr(full)
+        if count == 1:
+            await c.expire(full, window_seconds)
+        return count <= limit
+    except Exception:
+        return True
+
+
 # ── View counters (§10): INCR view:{release_id}:{yyyy-mm-dd} ──────────────
 async def incr_view(release_id: str, day: str) -> None:
     try:

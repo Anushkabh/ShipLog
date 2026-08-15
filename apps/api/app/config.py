@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     github_client_secret: str = ""
     github_app_id: str = ""
     github_app_private_key: str = ""       # PEM
+    github_app_slug: str = ""              # install-URL slug (auto-discovered if blank)
     github_webhook_secret: str = ""        # HMAC secret for X-Hub-Signature-256
 
     # ── Email (SES in prod; console in local) ────────────────────────────

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
 import "./globals.css";
-import { SessionProvider } from "@/components/auth/session";
 
 export const metadata: Metadata = {
   title: "Shiplog",
@@ -21,9 +20,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body>
-        <SessionProvider>{children}</SessionProvider>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

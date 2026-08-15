@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import useSWR from "swr";
-import { Plus } from "lucide-react";
+import { ExternalLink, Plus } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
@@ -56,12 +56,26 @@ export default function ReleasesPage() {
               site and widget.
             </p>
           </div>
-          <Button asChild>
-            <Link href={newHref}>
-              <Plus />
-              New release
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            {project && (
+              <Button asChild variant="ghost">
+                <a
+                  href={`/c/${project.public_key}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink />
+                  View changelog
+                </a>
+              </Button>
+            )}
+            <Button asChild>
+              <Link href={newHref}>
+                <Plus />
+                New release
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {/* Status pipeline */}

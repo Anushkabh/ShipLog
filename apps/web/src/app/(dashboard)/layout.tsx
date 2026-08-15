@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
-import { useSession } from "@/components/auth/session";
+import { SessionProvider, useSession } from "@/components/auth/session";
 import { Sidebar } from "@/components/shell/sidebar";
 
 export default function DashboardLayout({
@@ -12,6 +12,14 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  return (
+    <SessionProvider>
+      <DashboardShell>{children}</DashboardShell>
+    </SessionProvider>
+  );
+}
+
+function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading, error } = useSession();
 

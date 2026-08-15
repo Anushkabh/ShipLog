@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -42,6 +42,16 @@ def _site_url(project: Project) -> str:
     return f"https://{project.slug}.{settings.root_domain}"
 
 
+def _to_feed_release(r: Release, site: str) -> FeedRelease:
+    return FeedRelease(
+        publishedAt=r.published_at,
+        title=r.title,
+        url=f"{site}/{r.slug}",
+        bodyHtml=r.body_html,  # sanitized at write time
+        tags=[FeedTag(name=t.name, color=t.color) for t in r.tags],
+    )
+
+
 async def _build_feed(db, project: Project) -> WidgetFeed:
     rows = list(
         await db.scalars(
@@ -57,17 +67,9 @@ async def _build_feed(db, project: Project) -> WidgetFeed:
         )
     )
     site = _site_url(project)
-    releases = [
-        FeedRelease(
-            publishedAt=r.published_at,
-            title=r.title,
-            url=f"{site}/{r.slug}",
-            bodyHtml=r.body_html,
-            tags=[FeedTag(name=t.name, color=t.color) for t in r.tags],
-        )
-        for r in rows
-    ]
-    return WidgetFeed(releases=releases, siteUrl=site)
+    return WidgetFeed(
+        releases=[_to_feed_release(r, site) for r in rows], siteUrl=site
+    )
 
 
 @router.get("/{public_key}/feed")
@@ -84,6 +86,32 @@ async def feed(public_key: str, db: DbDep) -> Response:
 
     payload = (await _build_feed(db, project)).model_dump_json()
     await cache.set_feed(public_key, payload)
+    return Response(payload, media_type="application/json", headers=_CORS)
+
+
+@router.get("/{public_key}/release/{slug}")
+async def release(public_key: str, slug: str, db: DbDep) -> Response:
+    """A single published release by slug — powers public permalink pages,
+    which the 20-item feed can't serve for older entries. Private and
+    unpublished releases 404, matching the feed's visibility rules."""
+    project = await db.scalar(select(Project).where(Project.public_key == public_key))
+    if not project:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+
+    r = await db.scalar(
+        select(Release)
+        .where(
+            Release.project_id == project.id,
+            Release.slug == slug,
+            Release.status == ReleaseStatus.PUBLISHED,
+            Release.is_private.is_(False),
+        )
+        .options(selectinload(Release.tags))
+    )
+    if not r:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+
+    payload = _to_feed_release(r, _site_url(project)).model_dump_json()
     return Response(payload, media_type="application/json", headers=_CORS)
 
 

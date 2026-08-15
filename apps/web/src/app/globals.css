@@ -143,3 +143,109 @@ body {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
+
+/*
+ * Public changelog body. Styles the server-sanitized bodyHtml (headings,
+ * lists, code, links) so entries read well without a typography plugin.
+ */
+.changelog-prose {
+  color: var(--muted-foreground);
+  font-size: 15px;
+  line-height: 1.7;
+}
+.changelog-prose > :first-child {
+  margin-top: 0;
+}
+.changelog-prose > :last-child {
+  margin-bottom: 0;
+}
+.changelog-prose h1,
+.changelog-prose h2,
+.changelog-prose h3 {
+  color: var(--foreground);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+.changelog-prose h1 {
+  font-size: 1.35rem;
+  margin: 1.6em 0 0.5em;
+}
+.changelog-prose h2 {
+  font-size: 1.1rem;
+  margin: 1.5em 0 0.5em;
+}
+.changelog-prose h3 {
+  font-size: 0.975rem;
+  margin: 1.3em 0 0.4em;
+}
+.changelog-prose p {
+  margin: 0 0 0.9em;
+}
+.changelog-prose ul,
+.changelog-prose ol {
+  margin: 0 0 0.9em;
+  padding-left: 1.3em;
+}
+.changelog-prose ul {
+  list-style: disc;
+}
+.changelog-prose ol {
+  list-style: decimal;
+}
+.changelog-prose li {
+  margin: 0.25em 0;
+}
+.changelog-prose li::marker {
+  color: var(--subtle);
+}
+.changelog-prose a {
+  color: var(--primary-text);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.changelog-prose strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+.changelog-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.4em;
+  color: var(--foreground);
+}
+.changelog-prose pre {
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.9em 1em;
+  overflow-x: auto;
+  margin: 0 0 0.9em;
+}
+.changelog-prose pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 0.82rem;
+}
+.changelog-prose blockquote {
+  border-left: 2px solid var(--border-strong);
+  padding-left: 1em;
+  margin: 0 0 0.9em;
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.changelog-prose img {
+  max-width: 100%;
+  border-radius: var(--radius-md);
+}
+.changelog-prose hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1.5em 0;
+}

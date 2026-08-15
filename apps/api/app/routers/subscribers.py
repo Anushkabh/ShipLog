@@ -10,20 +10,40 @@ from __future__ import annotations
 
 import secrets
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import select
 
 from app.deps import DbDep
 from app.models import Project, Subscriber
 from app.schemas import SubscribeRequest
-from app.services import crypto
+from app.services import cache, crypto
 from app.services.email import send_email
 
 router = APIRouter(prefix="/api/v1/widget", tags=["subscribers"])
 
 
+def _client_ip(request: Request) -> str:
+    # Behind Fly/Railway/API Gateway the real client is the first hop of
+    # X-Forwarded-For; direct connections fall back to the socket peer.
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 @router.post("/{public_key}/subscribe", status_code=status.HTTP_202_ACCEPTED)
-async def subscribe(public_key: str, body: SubscribeRequest, db: DbDep) -> dict:
+async def subscribe(
+    public_key: str, body: SubscribeRequest, db: DbDep, request: Request
+) -> dict:
+    # Public + sends email → throttle per IP so it can't be used to spam.
+    if not await cache.rate_limit(
+        f"subscribe:{_client_ip(request)}", limit=10, window_seconds=3600
+    ):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many subscribe attempts; try again later",
+        )
+
     project = await db.scalar(select(Project).where(Project.public_key == public_key))
     if not project:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown project")

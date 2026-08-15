@@ -12,6 +12,7 @@ auto-saved — a human edits and publishes.
 
 from __future__ import annotations
 
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -20,9 +21,17 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.deps import DbDep, require_project
-from app.models import AiCredential, AiProvider, IngestedItem, OrgRole, Project
+from app.models import (
+    AiCredential,
+    AiProvider,
+    IngestedItem,
+    OrgRole,
+    Project,
+    Release,
+    ReleaseStatus,
+)
 from app.services import crypto
-from app.services.ai import stream_draft
+from app.services.ai import ProductProfile, ReleaseExample, stream_draft
 
 router = APIRouter(prefix="/api/projects/{project_id}/ai", tags=["ai"])
 
@@ -79,17 +88,24 @@ async def generate(project: EditorProject, db: DbDep):
             status.HTTP_400_BAD_REQUEST, "No AI provider configured for this project"
         )
 
-    # Unused items = ingested but not yet attached to any release.
-    items = list(
-        await db.scalars(
-            select(IngestedItem)
-            .where(
-                IngestedItem.project_id == project.id,
-                IngestedItem.release_id.is_(None),
-            )
-            .order_by(IngestedItem.merged_at.desc())
+    # "Since the last release" = PRs merged after the most recent PUBLISHED
+    # release. Time-based (not a used/unused flag) so it stays correct even if a
+    # draft is discarded, and matches how the product is described: everything
+    # since you last published. No published release yet → everything so far.
+    last_published_at = await db.scalar(
+        select(Release.published_at)
+        .where(
+            Release.project_id == project.id,
+            Release.status == ReleaseStatus.PUBLISHED,
+            Release.published_at.is_not(None),
         )
+        .order_by(Release.published_at.desc())
+        .limit(1)
     )
+    q = select(IngestedItem).where(IngestedItem.project_id == project.id)
+    if last_published_at is not None:
+        q = q.where(IngestedItem.merged_at > last_published_at)
+    items = list(await db.scalars(q.order_by(IngestedItem.merged_at.desc())))
     if not items:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "No new merged PRs since the last release"
@@ -97,14 +113,79 @@ async def generate(project: EditorProject, db: DbDep):
 
     api_key = crypto.decrypt(cred.encrypted_key)
 
+    # Product context (grounds voice) + the last couple of published notes as
+    # few-shot voice samples, so drafts sound on-brand instead of generic.
+    profile = ProductProfile(
+        name=project.name,
+        summary=project.product_summary,
+        audience=project.audience,
+        tone=project.tone,
+    )
+    example_rows = list(
+        await db.scalars(
+            select(Release)
+            .where(
+                Release.project_id == project.id,
+                Release.status == ReleaseStatus.PUBLISHED,
+            )
+            .order_by(Release.published_at.desc())
+            .limit(2)
+        )
+    )
+    examples = [
+        ReleaseExample(title=r.title, body_markdown=r.body_markdown)
+        for r in example_rows
+        if (r.body_markdown or "").strip()
+    ]
+
+    def _body_frame(text: str) -> str:
+        # Escape newlines so multi-line markdown survives the line-based SSE
+        # protocol; the client reverses it.
+        return f"data: {text.replace(chr(10), chr(92) + 'n')}\n\n"
+
     async def sse():
-        # SSE frames: "data: <chunk>\n\n". A final [DONE] lets the client close.
+        # The model emits a `TITLE:`/`VERSION:` preamble first; we peel those
+        # lines off and send them as one `meta` frame so the editor can fill its
+        # title/version fields, then stream the note body as `data` frames.
+        in_meta = True
+        buf = ""
+        meta = {"title": "", "version": ""}
         try:
-            async for chunk in stream_draft(cred.provider, api_key, items):
-                # Escape newlines within a data frame so multi-line markdown
-                # survives the SSE line-based protocol.
-                safe = chunk.replace("\n", "\\n")
-                yield f"data: {safe}\n\n"
+            async for chunk in stream_draft(
+                cred.provider, api_key, items,
+                profile=profile, examples=examples or None,
+            ):
+                if not in_meta:
+                    if chunk:
+                        yield _body_frame(chunk)
+                    continue
+                buf += chunk
+                while "\n" in buf:
+                    line, _, rest = buf.partition("\n")
+                    up = line.strip().upper()
+                    if up.startswith("TITLE:"):
+                        meta["title"] = line.split(":", 1)[1].strip()
+                        buf = rest
+                        continue
+                    if up.startswith("VERSION:"):
+                        meta["version"] = line.split(":", 1)[1].strip()
+                        buf = rest
+                        continue
+                    if line.strip() == "":
+                        buf = rest  # separator between preamble and body
+                        continue
+                    # First real body line → close the preamble.
+                    in_meta = False
+                    yield f"event: meta\ndata: {json.dumps(meta)}\n\n"
+                    body = line + "\n" + rest
+                    buf = ""
+                    if body:
+                        yield _body_frame(body)
+                    break
+            if in_meta:  # stream ended inside the preamble (no body line seen)
+                yield f"event: meta\ndata: {json.dumps(meta)}\n\n"
+                if buf.strip():
+                    yield _body_frame(buf)
         except Exception as e:  # surface provider errors to the editor
             yield f"event: error\ndata: {str(e)[:200]}\n\n"
         yield "data: [DONE]\n\n"

@@ -44,7 +44,18 @@ class ProjectOut(ORMModel):
     custom_domain: str | None
     domain_verified: bool
     email_enabled: bool
+    product_summary: str | None = None
+    audience: str | None = None
+    tone: str | None = None
     created_at: datetime
+
+
+class ProjectProfileUpdate(BaseModel):
+    """Product context that grounds AI drafting. All optional; empty clears."""
+
+    product_summary: str | None = Field(default=None, max_length=2000)
+    audience: str | None = Field(default=None, max_length=255)
+    tone: str | None = Field(default=None, max_length=255)
 
 
 # ── Tags ──────────────────────────────────────────────────────────────────

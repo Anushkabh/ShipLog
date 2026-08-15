@@ -128,6 +128,10 @@ class Project(Base):
     )
     theme: Mapped[dict | None] = mapped_column(JSON)
     email_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Product context that grounds AI drafting so notes sound on-brand (§7).
+    product_summary: Mapped[str | None] = mapped_column(Text)  # what the product is
+    audience: Mapped[str | None] = mapped_column(String(255))  # who reads the notes
+    tone: Mapped[str | None] = mapped_column(String(255))      # voice, e.g. "friendly, concise"
     organization_id: Mapped[str] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE")
     )

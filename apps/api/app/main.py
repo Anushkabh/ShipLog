@@ -7,7 +7,9 @@ in-process worker path works with zero AWS.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,10 +18,29 @@ from app.config import settings
 
 logging.basicConfig(level=logging.INFO)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # On a long-lived server (QUEUE_BACKEND=local) the scheduled-release
+    # publisher runs in-process; on Lambda (lifespan="off") EventBridge calls
+    # scheduler.publish_due_releases() instead.
+    stop = asyncio.Event()
+    task: asyncio.Task | None = None
+    if settings.queue_backend == "local":
+        from app.services.scheduler import run_scheduler
+
+        task = asyncio.create_task(run_scheduler(stop))
+    yield
+    if task:
+        stop.set()
+        await task
+
+
 app = FastAPI(
     title="Shiplog API",
     version="0.1.0",
     docs_url="/docs" if not settings.is_prod else None,  # hide schema in prod
+    lifespan=lifespan,
 )
 
 # Dashboard is same-origin via Next.js /api rewrite in prod, but during local
@@ -57,6 +78,7 @@ app.include_router(widget.router)
 app.include_router(subscribers.router)
 app.include_router(webhooks.router)
 app.include_router(integrations.router)
+app.include_router(integrations.setup_router)
 app.include_router(ai.router)
 
 # ── Register local queue consumers (self-register on import) ──────────────
