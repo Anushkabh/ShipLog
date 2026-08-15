@@ -97,6 +97,59 @@ class ReleaseExample:
     body_markdown: str
 
 
+# ── Onboarding: draft the product profile from a repo's markdown docs ──────
+_PROFILE_SYSTEM = """You analyze a software project's documentation (README and \
+other markdown files) to produce context for writing its customer-facing release \
+notes. Output a JSON object with exactly:
+- "summary": one or two sentences describing what the product IS and does (plain,
+  concrete, no marketing fluff).
+- "audience": who reads this product's release notes (e.g. "developers integrating
+  the API", "product managers at SaaS companies", "end users of a mobile app").
+- "tone": the voice release notes should use, as a short comma-separated phrase
+  (e.g. "friendly, concise, benefit-led" or "precise, technical, matter-of-fact").
+Base everything on the docs; if something is unclear, make a reasonable inference.
+Respond with ONLY the JSON object — no prose, no code fences."""
+
+_MAX_DOCS_CHARS = 8000
+
+
+def _parse_profile(raw: str) -> dict[str, str]:
+    text = raw.strip()
+    start, end = text.find("{"), text.rfind("}")
+    data: dict = {}
+    if start != -1 and end != -1:
+        try:
+            data = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            data = {}
+    return {
+        "product_summary": str(data.get("summary") or "").strip(),
+        "audience": str(data.get("audience") or "").strip(),
+        "tone": str(data.get("tone") or "").strip(),
+    }
+
+
+async def infer_profile(
+    provider: AiProvider, api_key: str, product_name: str, docs: str
+) -> dict[str, str]:
+    """One-shot: turn repo docs into a draft {product_summary, audience, tone}."""
+    import litellm  # lazy: heavy import stays out of the API cold-start path
+
+    if len(docs) > _MAX_DOCS_CHARS:
+        docs = docs[:_MAX_DOCS_CHARS]
+    user = f"Product name: {product_name}\n\nDOCUMENTATION:\n{docs}"
+    response = await litellm.acompletion(
+        model=_DEFAULT_MODEL[provider],
+        api_key=api_key,
+        messages=[
+            {"role": "system", "content": _PROFILE_SYSTEM},
+            {"role": "user", "content": user},
+        ],
+        temperature=0,
+    )
+    return _parse_profile(response.choices[0].message.content or "")
+
+
 @dataclass
 class ProductProfile:
     """Product context that grounds the draft so it sounds on-brand."""

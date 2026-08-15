@@ -15,9 +15,11 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 import time
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 import jwt
@@ -25,6 +27,17 @@ import jwt
 from app.config import settings
 
 _API = "https://api.github.com"
+
+# Markdown paths that never carry product context (legal, process, templates,
+# vendored trees). CHANGELOG/HISTORY are excluded here — they're voice samples,
+# imported separately, not product description.
+_DOC_SKIP = re.compile(
+    r"(^|/)(license|changelog|history|releases?|code_of_conduct|security|"
+    r"contributing|authors|notice|pull_request_template|issue_template)[^/]*$|"
+    r"(^|/)(node_modules|vendor|dist|build|\.github|test|tests|__tests__)/",
+    re.IGNORECASE,
+)
+_MAX_DOC_FILE_BYTES = 50_000
 
 
 def verify_signature(body: bytes, signature_header: str | None) -> bool:
@@ -113,6 +126,82 @@ async def get_installation(installation_id: str) -> dict[str, Any] | None:
         return r.json()
 
 
+def _doc_rank(path: str) -> int:
+    """Lower = more likely to describe the product. README first, then docs/,
+    then other root-level markdown, then everything deeper."""
+    name = path.rsplit("/", 1)[-1].lower()
+    depth = path.count("/")
+    if name.startswith("readme"):
+        return 0
+    if path.lower().startswith("docs/"):
+        return 10 + depth
+    if depth == 0:
+        return 20  # other root-level .md (OVERVIEW, ARCHITECTURE, ABOUT, …)
+    return 40 + depth
+
+
+async def gather_docs(
+    installation_id: str,
+    repo_full_name: str,
+    *,
+    max_files: int = 6,
+    max_chars: int = 8000,
+) -> str:
+    """Collect the most product-relevant markdown across a repo (not just the
+    README) into one bounded blob for profile inference.
+
+    Walks the git tree, keeps `.md`/`.markdown` (minus the skip-list and huge
+    files), ranks by likely relevance, then fetches top files until a file/char
+    budget is hit. Returns "" if nothing usable is found.
+    """
+    token = await installation_token(installation_id)
+    auth = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    async with httpx.AsyncClient(timeout=20) as http:
+        meta = await http.get(f"{_API}/repos/{repo_full_name}", headers=auth)
+        if meta.status_code != 200:
+            return ""
+        branch = meta.json().get("default_branch") or "main"
+
+        tree_resp = await http.get(
+            f"{_API}/repos/{repo_full_name}/git/trees/{branch}",
+            headers=auth,
+            params={"recursive": "1"},
+        )
+        if tree_resp.status_code != 200:
+            return ""
+        mds = [
+            t
+            for t in tree_resp.json().get("tree", [])
+            if t.get("type") == "blob"
+            and t.get("path", "").lower().endswith((".md", ".markdown"))
+            and not _DOC_SKIP.search(t["path"])
+            and 0 < (t.get("size") or 0) <= _MAX_DOC_FILE_BYTES
+        ]
+        mds.sort(key=lambda t: (_doc_rank(t["path"]), len(t["path"])))
+
+        parts: list[str] = []
+        total = 0
+        raw_headers = {**auth, "Accept": "application/vnd.github.raw+json"}
+        for t in mds:
+            if len(parts) >= max_files or total >= max_chars:
+                break
+            fr = await http.get(
+                f"{_API}/repos/{repo_full_name}/contents/{quote(t['path'])}",
+                headers=raw_headers,
+                params={"ref": branch},
+            )
+            if fr.status_code != 200 or not fr.text.strip():
+                continue
+            content = fr.text.strip()
+            budget = max_chars - total
+            if len(content) > budget:
+                content = content[:budget] + "…"
+            parts.append(f"# File: {t['path']}\n{content}")
+            total += len(content)
+
+    return "\n\n".join(parts)
+
+
 async def list_installation_repos(installation_id: str) -> list[dict[str, Any]]:
     """Every repo the user granted this installation (paginated)."""
     token = await installation_token(installation_id)
@@ -194,6 +283,45 @@ def _normalize_list_pr(pr: dict[str, Any]) -> dict[str, Any]:
         "url": pr.get("html_url") or "",
         "merged_at": _parse_ts(pr.get("merged_at")),
     }
+
+
+async def list_releases(
+    installation_id: str, repo_full_name: str, limit: int = 20
+) -> list[dict[str, Any]]:
+    """A repo's published GitHub Releases (for importing changelog history).
+
+    Skips drafts. Each dict is ready for the importer to turn into a Release row.
+    """
+    token = await installation_token(installation_id)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    }
+    async with httpx.AsyncClient(timeout=15) as http:
+        r = await http.get(
+            f"{_API}/repos/{repo_full_name}/releases",
+            headers=headers,
+            params={"per_page": min(limit, 100)},
+        )
+        if r.status_code != 200:
+            return []
+        out: list[dict[str, Any]] = []
+        for rel in r.json():
+            if rel.get("draft"):
+                continue  # unpublished drafts aren't real changelog entries
+            out.append(
+                {
+                    "tag": rel.get("tag_name") or "",
+                    "name": rel.get("name") or rel.get("tag_name") or "",
+                    "body": rel.get("body") or "",
+                    "published_at": _parse_ts(rel.get("published_at")),
+                    "url": rel.get("html_url") or "",
+                    "prerelease": bool(rel.get("prerelease")),
+                }
+            )
+            if len(out) >= limit:
+                break
+        return out
 
 
 def normalize_pr(payload: dict[str, Any]) -> dict[str, Any] | None:

@@ -115,6 +115,14 @@ export const api = {
     request<Project>("/api/projects", { method: "POST", body }),
   updateProjectProfile: (id: string, body: ProjectProfileUpdate) =>
     request<Project>(`/api/projects/${id}/profile`, { method: "PUT", body }),
+  inferProjectProfile: (id: string) =>
+    request<ProjectProfileUpdate>(`/api/projects/${id}/profile/infer`, {
+      method: "POST",
+    }),
+  importReleases: (id: string) =>
+    request<{ imported: number }>(`/api/projects/${id}/import/releases`, {
+      method: "POST",
+    }),
 
   // ── Releases ──────────────────────────────────────────────────────────
   releases: (projectId: string) =>

@@ -51,6 +51,8 @@ export default function AiSettingsPage() {
   const [tone, setTone] = React.useState("");
   const [profileSaving, setProfileSaving] = React.useState(false);
   const [profileSaved, setProfileSaved] = React.useState(false);
+  const [inferring, setInferring] = React.useState(false);
+  const [inferNote, setInferNote] = React.useState<string | null>(null);
   const profileHydrated = React.useRef(false);
 
   React.useEffect(() => {
@@ -65,6 +67,27 @@ export default function AiSettingsPage() {
       setTone(project.tone ?? "");
     }
   }, [project]);
+
+  async function autofill() {
+    setInferring(true);
+    setInferNote(null);
+    setError(null);
+    try {
+      const p = await api.inferProjectProfile(projectId);
+      setSummary(p.product_summary ?? "");
+      setAudience(p.audience ?? "");
+      setTone(p.tone ?? "");
+      setInferNote("Drafted from your repo’s README — review and edit, then save.");
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Couldn’t analyze your repo. Try again.",
+      );
+    } finally {
+      setInferring(false);
+    }
+  }
 
   async function saveProfile(e: React.FormEvent) {
     e.preventDefault();
@@ -234,15 +257,40 @@ export default function AiSettingsPage() {
         {/* Product context — grounds the AI voice */}
         <Card>
           <CardHeader>
-            <CardTitle>Product context</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Optional, but it&rsquo;s what makes drafts sound like{" "}
-              <span className="font-medium text-foreground">your</span> product
-              instead of generic. Fed to the AI on every draft.
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>Product context</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Optional, but it&rsquo;s what makes drafts sound like{" "}
+                  <span className="font-medium text-foreground">your</span>{" "}
+                  product instead of generic. Fed to the AI on every draft.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="subtle"
+                size="sm"
+                onClick={autofill}
+                disabled={inferring}
+                className="flex-none"
+              >
+                {inferring ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <Sparkles className="size-3.5" />
+                )}
+                Auto-fill from repo
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <form onSubmit={saveProfile} className="grid gap-4">
+              {inferNote && (
+                <p className="flex items-center gap-1.5 rounded-md bg-primary-weak px-3 py-2 text-xs text-primary-text">
+                  <Sparkles className="size-3 flex-none" />
+                  {inferNote}
+                </p>
+              )}
               <div className="grid gap-2">
                 <Label htmlFor="summary">What is this product?</Label>
                 <Textarea

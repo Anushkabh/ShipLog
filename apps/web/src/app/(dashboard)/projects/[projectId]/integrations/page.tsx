@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
-import { CircleAlert, CircleCheck, Github, Loader2, Plug, RefreshCw, Trash2 } from "lucide-react";
+import { CircleAlert, CircleCheck, DownloadCloud, Github, Loader2, Plug, RefreshCw, Trash2 } from "lucide-react";
 
 import { api, ApiError } from "@/lib/api";
 import type { Integration, Project } from "@/lib/types";
@@ -50,7 +50,28 @@ export default function IntegrationsPage() {
   const [removing, setRemoving] = React.useState<string | null>(null);
   const [syncing, setSyncing] = React.useState<string | null>(null);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
+  const [importing, setImporting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  async function importPastReleases() {
+    setImporting(true);
+    setSyncMsg(null);
+    setError(null);
+    try {
+      const { imported } = await api.importReleases(projectId);
+      setSyncMsg(
+        imported > 0
+          ? `Imported ${imported} past ${imported === 1 ? "release" : "releases"} from GitHub — they now seed your changelog and the AI's voice.`
+          : "No new GitHub Releases found to import.",
+      );
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Couldn't import past releases.",
+      );
+    } finally {
+      setImporting(false);
+    }
+  }
 
   async function sync(id: string, repo: string) {
     setSyncing(id);
@@ -106,7 +127,23 @@ export default function IntegrationsPage() {
               release drafts.
             </p>
           </div>
-          <ConnectGithubButton projectId={projectId} />
+          <div className="flex flex-none items-center gap-2">
+            {integrations && integrations.length > 0 && (
+              <Button
+                variant="subtle"
+                onClick={importPastReleases}
+                disabled={importing}
+              >
+                {importing ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <DownloadCloud />
+                )}
+                Import past releases
+              </Button>
+            )}
+            <ConnectGithubButton projectId={projectId} />
+          </div>
         </div>
 
         {connected !== null && (
