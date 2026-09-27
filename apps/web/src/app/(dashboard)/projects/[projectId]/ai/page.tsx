@@ -150,9 +150,9 @@ export default function AiSettingsPage() {
         <div>
           <h1 className="text-xl font-bold tracking-tight">AI drafts</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Bring your own provider key. Shiplog drafts release notes from your
-            connected repos&rsquo; merged PRs — you always review before
-            publishing.
+            Shiplog drafts release notes from your connected repos&rsquo; merged
+            PRs — you always review before publishing. AI works out of the box;
+            adding your own provider key is optional.
           </p>
         </div>
 
@@ -178,17 +178,21 @@ export default function AiSettingsPage() {
               </span>
               <div className="flex-1">
                 <div className="text-sm font-semibold">
-                  {cred?.configured
-                    ? `Connected — ${
-                        PROVIDERS.find((p) => p.value === cred.provider)
-                          ?.label ?? cred.provider
-                      }`
-                    : "No provider configured"}
+                  {!cred?.configured
+                    ? "AI drafting unavailable"
+                    : cred.source === "platform"
+                      ? "Built-in AI is on"
+                      : `Using your own key — ${
+                          PROVIDERS.find((p) => p.value === cred.provider)
+                            ?.label ?? cred.provider
+                        }`}
                 </div>
                 <div className="text-xs text-subtle">
-                  {cred?.configured
-                    ? "The key is stored AES-256-GCM encrypted at rest."
-                    : "Add a provider key below to enable AI drafting."}
+                  {!cred?.configured
+                    ? "Add a provider key below to enable AI drafting."
+                    : cred.source === "platform"
+                      ? `No setup needed — up to ${cred.daily_limit} drafts per day. Add your own key below for unlimited use.`
+                      : "Your key is stored AES-256-GCM encrypted at rest."}
                 </div>
               </div>
             </CardContent>
@@ -198,7 +202,11 @@ export default function AiSettingsPage() {
         {/* Key form */}
         <Card>
           <CardHeader>
-            <CardTitle>{cred?.configured ? "Replace key" : "Add key"}</CardTitle>
+            <CardTitle>
+              {cred?.source === "project"
+                ? "Replace your key"
+                : "Use your own key (optional)"}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={save} className="grid gap-4">
@@ -225,7 +233,7 @@ export default function AiSettingsPage() {
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={cred?.configured ? "Enter a new key to replace" : "sk-…"}
+                  placeholder={cred?.source === "project" ? "Enter a new key to replace" : "sk-…"}
                   autoComplete="off"
                   required
                   className="font-mono"

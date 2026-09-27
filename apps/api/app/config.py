@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     github_app_slug: str = ""              # install-URL slug (auto-discovered if blank)
     github_webhook_secret: str = ""        # HMAC secret for X-Hub-Signature-256
 
+    # ── Built-in AI (used when a project hasn't brought its own key) ─────
+    # Groq's free tier makes this effectively free; the per-project daily cap
+    # stops one project (or a curious visitor) from exhausting it.
+    platform_ai_provider: str = "groq"       # openai | anthropic | gemini | groq
+    platform_ai_api_key: str = ""
+    platform_ai_daily_limit: int = 25        # AI calls per project per day
+
     # ── Email (SES in prod; console in local) ────────────────────────────
     email_from: str = "Shiplog <updates@shiplog.app>"
     email_backend: str = "console"         # console | ses | resend

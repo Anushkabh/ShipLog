@@ -11,14 +11,13 @@ from sqlalchemy.exc import IntegrityError
 
 from app.deps import CurrentUser, DbDep, require_project
 from app.models import (
-    AiCredential,
     Integration,
     OrganizationMember,
     OrgRole,
     Project,
 )
 from app.schemas import ProjectCreate, ProjectOut, ProjectProfileUpdate
-from app.services import ai, cache, crypto, github, importer
+from app.services import ai, ai_access, cache, github, importer
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -92,15 +91,8 @@ async def infer_profile(
     project: Annotated[Project, Depends(require_project(OrgRole.EDITOR))],
     db: DbDep,
 ) -> ProjectProfileUpdate:
-    """Draft the product profile from a connected repo's README (not saved — the
-    caller reviews and PUTs it). Needs an AI key and at least one connected repo."""
-    cred = await db.scalar(
-        select(AiCredential).where(AiCredential.project_id == project.id)
-    )
-    if not cred:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Add an AI provider key first."
-        )
+    """Draft the product profile from a connected repo's markdown docs (not saved —
+    the caller reviews and PUTs it). Uses the project's key or the built-in one."""
     integrations = list(
         await db.scalars(
             select(Integration).where(Integration.project_id == project.id)
@@ -128,8 +120,9 @@ async def infer_profile(
             status.HTTP_404_NOT_FOUND,
             "None of the connected repos have markdown docs to analyze.",
         )
+    access = await ai_access.require(db, project)  # after docs: never charge for nothing
     result = await ai.infer_profile(
-        cred.provider, crypto.decrypt(cred.encrypted_key), project.name, docs
+        access.provider, access.api_key, project.name, docs
     )
     return ProjectProfileUpdate(**result)
 

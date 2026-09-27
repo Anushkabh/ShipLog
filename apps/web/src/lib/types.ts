@@ -67,8 +67,10 @@ export interface Release {
 }
 
 export interface CredentialStatus {
-  configured: boolean;
+  configured: boolean; // can this project draft right now?
   provider: AiProvider | null;
+  source: "project" | "platform" | null; // own key vs Shiplog's built-in AI
+  daily_limit: number | null; // only set for the built-in AI
 }
 
 export interface CredentialIn {

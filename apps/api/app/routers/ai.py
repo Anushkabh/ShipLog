@@ -20,6 +20,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app.config import settings
 from app.deps import DbDep, require_project
 from app.models import (
     AiCredential,
@@ -30,7 +31,7 @@ from app.models import (
     Release,
     ReleaseStatus,
 )
-from app.services import crypto
+from app.services import ai_access, crypto
 from app.services.ai import ProductProfile, ReleaseExample, stream_draft
 
 router = APIRouter(prefix="/api/projects/{project_id}/ai", tags=["ai"])
@@ -45,8 +46,10 @@ class CredentialIn(BaseModel):
 
 
 class CredentialStatus(BaseModel):
-    configured: bool
+    configured: bool                    # can this project draft right now?
     provider: AiProvider | None = None
+    source: str | None = None           # "project" (own key) | "platform" (built-in)
+    daily_limit: int | None = None      # only for the built-in key
 
 
 @router.put("/credential", response_model=CredentialStatus)
@@ -65,7 +68,7 @@ async def set_credential(body: CredentialIn, project: AdminProject, db: DbDep):
             )
         )
     await db.commit()
-    return CredentialStatus(configured=True, provider=body.provider)
+    return CredentialStatus(configured=True, provider=body.provider, source="project")
 
 
 @router.get("/credential", response_model=CredentialStatus)
@@ -73,21 +76,20 @@ async def get_credential(project: EditorProject, db: DbDep):
     cred = await db.scalar(
         select(AiCredential).where(AiCredential.project_id == project.id)
     )
-    if not cred:
-        return CredentialStatus(configured=False)
-    return CredentialStatus(configured=True, provider=cred.provider)
+    if cred:
+        return CredentialStatus(configured=True, provider=cred.provider, source="project")
+    if ai_access.platform_available():
+        return CredentialStatus(
+            configured=True,
+            provider=AiProvider(settings.platform_ai_provider),
+            source="platform",
+            daily_limit=settings.platform_ai_daily_limit,
+        )
+    return CredentialStatus(configured=False)
 
 
 @router.post("/generate")
 async def generate(project: EditorProject, db: DbDep):
-    cred = await db.scalar(
-        select(AiCredential).where(AiCredential.project_id == project.id)
-    )
-    if not cred:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "No AI provider configured for this project"
-        )
-
     # "Since the last release" = PRs merged after the most recent PUBLISHED
     # release. Time-based (not a used/unused flag) so it stays correct even if a
     # draft is discarded, and matches how the product is described: everything
@@ -111,7 +113,9 @@ async def generate(project: EditorProject, db: DbDep):
             status.HTTP_400_BAD_REQUEST, "No new merged PRs since the last release"
         )
 
-    api_key = crypto.decrypt(cred.encrypted_key)
+    # Resolve the key only once we know there's something to draft, so an
+    # empty project never spends the platform's daily quota.
+    access = await ai_access.require(db, project)
 
     # Product context (grounds voice) + the last couple of published notes as
     # few-shot voice samples, so drafts sound on-brand instead of generic.
@@ -152,7 +156,7 @@ async def generate(project: EditorProject, db: DbDep):
         meta = {"title": "", "version": ""}
         try:
             async for chunk in stream_draft(
-                cred.provider, api_key, items,
+                access.provider, access.api_key, items,
                 profile=profile, examples=examples or None,
             ):
                 if not in_meta:
