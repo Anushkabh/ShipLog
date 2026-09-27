@@ -44,7 +44,7 @@ from app.models import (
     Project,
 )
 from app.schemas import ORMModel
-from app.services import backfill, crypto, github
+from app.services import backfill, crypto, github, onboarding
 
 log = logging.getLogger("shiplog.integrations")
 
@@ -64,9 +64,10 @@ _STATE_COOKIE = "shiplog_gh_install_state"
 _backfill_tasks: set[asyncio.Task] = set()
 
 
-def _fire_backfill(integration_id: str) -> None:
-    """Kick off a detached backfill (local dev). Never blocks the caller."""
-    task = asyncio.create_task(backfill.run_for_integration(integration_id))
+def _fire_onboarding(project_id: str) -> None:
+    """Kick off the post-connect onboarding job (PRs, past releases, product
+    context) detached from the request. Never blocks the caller."""
+    task = asyncio.create_task(onboarding.onboard_after_connect(project_id))
     _backfill_tasks.add(task)
     task.add_done_callback(_backfill_tasks.discard)
 
@@ -169,7 +170,7 @@ async def github_install(project: AdminProject) -> RedirectResponse:
 def _dashboard(project_id: str | None, **params: str) -> str:
     q = "&".join(f"{k}={v}" for k, v in params.items())
     base = (
-        f"{settings.app_url}/projects/{project_id}/integrations"
+        f"{settings.app_url}/projects/{project_id}/setup"
         if project_id
         else f"{settings.app_url}/projects"
     )
@@ -249,10 +250,10 @@ async def github_setup(request: Request, db: DbDep) -> RedirectResponse:
         integration_ids.append(row.scalar_one())
     await db.commit()
 
-    # 5. Backfill recent merged PRs in the background so material shows up
-    #    without waiting for the next webhook. Detached — connect returns now.
-    for iid in integration_ids:
-        _fire_backfill(iid)
+    # 5. Onboard in the background: pull recent PRs, import past releases, and
+    #    auto-fill the product context. Detached — the redirect returns now.
+    if integration_ids:
+        _fire_onboarding(project_id)
 
     ok = RedirectResponse(
         _dashboard(project_id, connected=str(len(integration_ids))), status_code=302

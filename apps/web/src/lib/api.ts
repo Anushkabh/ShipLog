@@ -19,6 +19,7 @@ import type {
   Release,
   ReleaseCreate,
   ReleaseUpdate,
+  SetupStatus,
   SubscribeResult,
   User,
 } from "./types";
@@ -117,6 +118,12 @@ export const api = {
     request<Project>(`/api/projects/${id}/profile`, { method: "PUT", body }),
   inferProjectProfile: (id: string) =>
     request<ProjectProfileUpdate>(`/api/projects/${id}/profile/infer`, {
+      method: "POST",
+    }),
+  setupStatus: (id: string) =>
+    request<SetupStatus>(`/api/projects/${id}/setup`),
+  loadSampleData: (id: string) =>
+    request<{ loaded: number }>(`/api/projects/${id}/sample-data`, {
       method: "POST",
     }),
   importReleases: (id: string) =>

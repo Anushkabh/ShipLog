@@ -8,12 +8,11 @@ import {
   ArrowLeft,
   ChevronDown,
   LayoutList,
-  type LucideIcon,
-  Mail,
+  ListChecks,
   Plug,
   Rocket,
-  Settings,
   Sparkles,
+  type LucideIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -79,15 +78,14 @@ export function Sidebar() {
   const projectNav: NavItem[] = projectId
     ? [
         {
+          href: `/projects/${projectId}/setup`,
+          label: "Get started",
+          icon: ListChecks,
+        },
+        {
           href: `/projects/${projectId}/releases`,
           label: "Releases",
           icon: LayoutList,
-        },
-        {
-          href: `/projects/${projectId}/subscribers`,
-          label: "Subscribers",
-          icon: Mail,
-          soon: true,
         },
         {
           href: `/projects/${projectId}/integrations`,
@@ -98,12 +96,6 @@ export function Sidebar() {
           href: `/projects/${projectId}/ai`,
           label: "AI drafts",
           icon: Sparkles,
-        },
-        {
-          href: `/projects/${projectId}/settings`,
-          label: "Settings",
-          icon: Settings,
-          soon: true,
         },
       ]
     : [];

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
 import { AlertCircle, Check, Loader2, Send, Sparkles, Square } from "lucide-react";
 
@@ -31,6 +31,7 @@ export function ReleaseEditor({
   releaseId?: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { mutate: globalMutate } = useSWRConfig();
 
   const { data: project } = useSWR<Project>(
@@ -189,6 +190,19 @@ export function ReleaseEditor({
       aiAbort.current = null;
     }
   }
+
+  // Arriving from "Get started → Draft my release" (?autodraft=1): start the
+  // AI draft straight away, once AI is known to be available. Runs once, and the
+  // flag is dropped from the URL so a refresh doesn't draft a second time.
+  const autoDrafted = React.useRef(false);
+  React.useEffect(() => {
+    if (autoDrafted.current || !isNew || !cred?.configured) return;
+    if (searchParams.get("autodraft") !== "1") return;
+    autoDrafted.current = true;
+    window.history.replaceState(null, "", window.location.pathname);
+    void generate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cred?.configured, isNew]);
 
   function stopGenerate() {
     aiAbort.current?.abort();

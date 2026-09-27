@@ -67,7 +67,7 @@ export function CreateProjectDialog() {
       await mutate("/api/projects");
       setOpen(false);
       reset();
-      router.push(`/projects/${project.id}/releases`);
+      router.push(`/projects/${project.id}/setup`);
     } catch (err) {
       setError(
         err instanceof ApiError

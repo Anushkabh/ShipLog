@@ -139,3 +139,13 @@ export interface WidgetFeed {
 export type SubscribeResult = {
   status: "verification_sent" | "already_subscribed";
 };
+
+export interface SetupStatus {
+  repos_connected: number;
+  prs_pending: number; // merged PRs since the last published release
+  releases: number;
+  published: number;
+  profile_set: boolean;
+  ai_ready: boolean;
+  public_key: string;
+}

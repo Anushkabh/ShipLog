@@ -17,13 +17,27 @@ from app.models import (
     Project,
 )
 from app.schemas import ProjectCreate, ProjectOut, ProjectProfileUpdate
-from app.services import ai, ai_access, cache, github, importer
+from app.services import ai, ai_access, cache, github, importer, onboarding
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
 class ImportResult(BaseModel):
     imported: int
+
+
+class SetupStatus(BaseModel):
+    repos_connected: int
+    prs_pending: int      # merged PRs since the last published release
+    releases: int
+    published: int
+    profile_set: bool
+    ai_ready: bool
+    public_key: str
+
+
+class SampleDataResult(BaseModel):
+    loaded: int
 
 
 @router.get("", response_model=list[ProjectOut])
@@ -150,3 +164,23 @@ async def import_releases(
     if count:
         await cache.bust_feed(project.public_key)  # new published releases
     return ImportResult(imported=count)
+
+
+@router.get("/{project_id}/setup", response_model=SetupStatus)
+async def setup_status(
+    project: Annotated[Project, Depends(require_project(OrgRole.VIEWER))],
+    db: DbDep,
+) -> SetupStatus:
+    """Checklist state for the Get started page (polled while onboarding runs)."""
+    return SetupStatus(**await onboarding.setup_status(db, project))
+
+
+@router.post("/{project_id}/sample-data", response_model=SampleDataResult)
+async def load_sample_data(
+    project: Annotated[Project, Depends(require_project(OrgRole.EDITOR))],
+    db: DbDep,
+) -> SampleDataResult:
+    """Fill the project with realistic merged PRs so the flow can be tried
+    without connecting a repo. Leaves the product context alone so sample data
+    never leaks into a project that later connects its real repo."""
+    return SampleDataResult(loaded=await onboarding.load_sample_prs(db, project))
