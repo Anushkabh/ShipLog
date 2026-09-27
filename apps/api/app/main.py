@@ -78,6 +78,37 @@ async def health() -> dict:
     return {"status": "ok", "env": settings.env}
 
 
+@app.get("/health/deep", tags=["meta"])
+async def health_deep() -> dict:
+    """Round-trip latency to the database and Redis, measured from the API's own
+    host — the numbers that decide how fast every page feels."""
+    import time
+
+    from sqlalchemy import text
+
+    from app.db import engine
+    from app.services import cache
+
+    def ms(t0: float) -> float:
+        return round((time.perf_counter() - t0) * 1000, 1)
+
+    db_ms: list[float] = []
+    async with engine.connect() as conn:
+        for _ in range(3):
+            t0 = time.perf_counter()
+            await conn.execute(text("select 1"))
+            db_ms.append(ms(t0))
+    redis_ms: list[float] = []
+    for _ in range(3):
+        t0 = time.perf_counter()
+        try:
+            await cache.client().ping()
+            redis_ms.append(ms(t0))
+        except Exception:
+            redis_ms.append(-1)
+    return {"db_round_trip_ms": db_ms, "redis_round_trip_ms": redis_ms}
+
+
 @app.get("/widget.js", include_in_schema=False)
 async def widget_js() -> FileResponse:
     if _WIDGET_JS is None:
