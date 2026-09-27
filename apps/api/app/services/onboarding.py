@@ -16,10 +16,19 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db import SessionLocal
-from app.models import IngestedItem, Integration, Project, Release, ReleaseStatus
+from app.models import (
+    IngestedItem,
+    Integration,
+    IntegrationProvider,
+    Project,
+    Release,
+    ReleaseStatus,
+    _id,
+)
 from app.services import ai, ai_access, backfill, github, importer
 from app.services.sample_data import CASES, REPO
 
@@ -28,25 +37,39 @@ log = logging.getLogger("shiplog.onboarding")
 
 async def load_sample_prs(db, project: Project) -> int:
     """Insert the sample PR set as merged "just now", so it all falls inside the
-    next draft's window. Idempotent: re-running upserts the same PR numbers."""
+    next draft's window. One multi-row upsert (a single round trip); re-running
+    just refreshes the same PR numbers."""
     now = datetime.now(UTC)
-    for i, case in enumerate(CASES):
-        await backfill.upsert_item(
-            db,
-            project.id,
-            {
-                "external_id": str(case.number),
-                "title": case.title,
-                "body": case.body,
-                "labels": case.labels,
-                "author": "sample-data",
-                "url": f"https://github.com/{REPO}/pull/{case.number}",
-                # Spread over the last few hours, newest last.
-                "merged_at": now - timedelta(minutes=10 * (len(CASES) - i)),
+    rows = [
+        {
+            "id": _id(),
+            "project_id": project.id,
+            "provider": IntegrationProvider.GITHUB,
+            "external_id": str(case.number),
+            "title": case.title,
+            "body": case.body,
+            "labels": case.labels,
+            "author": "sample-data",
+            "url": f"https://github.com/{REPO}/pull/{case.number}",
+            # Spread over the last few hours, newest last.
+            "merged_at": now - timedelta(minutes=10 * (len(CASES) - i)),
+        }
+        for i, case in enumerate(CASES)
+    ]
+    stmt = pg_insert(IngestedItem).values(rows)
+    await db.execute(
+        stmt.on_conflict_do_update(
+            constraint="uq_ingested_item",
+            set_={
+                "title": stmt.excluded.title,
+                "body": stmt.excluded.body,
+                "labels": stmt.excluded.labels,
+                "merged_at": stmt.excluded.merged_at,
             },
         )
+    )
     await db.commit()
-    return len(CASES)
+    return len(rows)
 
 
 async def _autofill_profile(db, project: Project, integrations: list[Integration]) -> bool:
@@ -100,41 +123,45 @@ async def onboard_after_connect(project_id: str) -> None:
 
 
 async def setup_status(db, project: Project) -> dict:
-    """Everything the Get started page needs, in one query-cheap bundle."""
-    repos = await db.scalar(
-        select(func.count()).select_from(Integration).where(Integration.project_id == project.id)
+    """Everything the Get started page needs, in ONE query (scalar subqueries),
+    because the page polls it and each round trip counts."""
+    pid = project.id
+    last_published = (
+        select(func.max(Release.published_at))
+        .where(Release.project_id == pid, Release.status == ReleaseStatus.PUBLISHED)
+        .scalar_subquery()
     )
-    last_published = await db.scalar(
-        select(func.max(Release.published_at)).where(
-            Release.project_id == project.id, Release.status == ReleaseStatus.PUBLISHED
+
+    def count(model, *where):
+        return select(func.count()).select_from(model).where(*where).scalar_subquery()
+
+    row = (
+        await db.execute(
+            select(
+                count(Integration, Integration.project_id == pid).label("repos"),
+                count(
+                    IngestedItem,
+                    IngestedItem.project_id == pid,
+                    or_(last_published.is_(None), IngestedItem.merged_at > last_published),
+                ).label("pending"),
+                count(Release, Release.project_id == pid).label("releases"),
+                count(
+                    Release, Release.project_id == pid,
+                    Release.status == ReleaseStatus.PUBLISHED,
+                ).label("published"),
+                count(
+                    Release, Release.project_id == pid,
+                    Release.status.in_([ReleaseStatus.DRAFT, ReleaseStatus.SCHEDULED]),
+                ).label("drafts"),
+            )
         )
-    )
-    pending_q = select(func.count()).select_from(IngestedItem).where(
-        IngestedItem.project_id == project.id
-    )
-    if last_published is not None:
-        pending_q = pending_q.where(IngestedItem.merged_at > last_published)
-    pending = await db.scalar(pending_q)
-    releases = await db.scalar(
-        select(func.count()).select_from(Release).where(Release.project_id == project.id)
-    )
-    published = await db.scalar(
-        select(func.count()).select_from(Release).where(
-            Release.project_id == project.id, Release.status == ReleaseStatus.PUBLISHED
-        )
-    )
-    drafts = await db.scalar(
-        select(func.count()).select_from(Release).where(
-            Release.project_id == project.id,
-            Release.status.in_([ReleaseStatus.DRAFT, ReleaseStatus.SCHEDULED]),
-        )
-    )
+    ).one()
     return {
-        "drafts": drafts or 0,
-        "repos_connected": repos or 0,
-        "prs_pending": pending or 0,
-        "releases": releases or 0,
-        "published": published or 0,
+        "repos_connected": row.repos,
+        "prs_pending": row.pending,
+        "releases": row.releases,
+        "published": row.published,
+        "drafts": row.drafts,
         "profile_set": bool(project.product_summary),
         "ai_ready": (await ai_access.resolve(db, project)) is not None,
         "public_key": project.public_key,

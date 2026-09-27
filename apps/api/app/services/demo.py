@@ -21,13 +21,19 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete, select
 
 from app.models import (
+    IngestedItem,
+    IntegrationProvider,
     Organization,
     OrganizationMember,
     OrgRole,
     Project,
+    Release,
+    ReleaseStatus,
     User,
 )
-from app.services import importer, onboarding
+from app.models import _id as _new_id  # assign PKs up front: no flush needed to link rows
+from app.services.render import render_markdown
+from app.services.sample_data import CASES, REPO
 
 log = logging.getLogger("shiplog.demo")
 
@@ -77,17 +83,25 @@ def is_demo_user(user: User) -> bool:
 
 
 async def create_demo_workspace(db) -> tuple[User, Project]:
+    """Build the whole sandbox in memory and save it in ONE transaction.
+
+    Every round trip counts when the API and database are far apart, so this
+    avoids per-row upserts, refreshes, and intermediate commits: the sandbox is
+    brand new, so plain batched INSERTs (one per table) are enough.
+    """
     token = secrets.token_hex(5)
+    now = datetime.now(UTC)
+
     user = User(
+        id=_new_id(),
         github_id=f"{DEMO_PREFIX}{token}",
         name="Demo visitor",
         email=f"{DEMO_PREFIX}{token}@demo.shiplog.invalid",
     )
-    org = Organization(name="Demo workspace", slug=f"{DEMO_PREFIX}{token}")
-    db.add_all([user, org])
-    await db.flush()
-    db.add(OrganizationMember(user_id=user.id, organization_id=org.id, role=OrgRole.OWNER))
+    org = Organization(id=_new_id(), name="Demo workspace", slug=f"{DEMO_PREFIX}{token}")
     project = Project(
+        id=_new_id(),
+        public_key=_new_id(),
         organization_id=org.id,
         name="Acme Analytics",
         slug=f"{DEMO_PREFIX}acme-{token}",
@@ -98,25 +112,43 @@ async def create_demo_workspace(db) -> tuple[User, Project]:
         audience="Product managers and founders at SaaS companies",
         tone="Friendly, confident, and concrete — benefit-led, no jargon",
     )
+    db.add_all([user, org])
+    db.add(OrganizationMember(user_id=user.id, organization_id=org.id, role=OrgRole.OWNER))
     db.add(project)
-    await db.commit()
-    await db.refresh(project)
 
-    now = datetime.now(UTC)
-    await importer.import_release_records(
-        db,
-        project,
-        [
-            {
-                "tag": r["tag"],
-                "name": r["name"],
-                "body": r["body"],
-                "published_at": now - timedelta(days=r["published_days_ago"]),
-            }
-            for r in _PAST_RELEASES
-        ],
-    )
-    await onboarding.load_sample_prs(db, project)
+    # Past releases: published history (public page + widget) and voice examples.
+    for r in _PAST_RELEASES:
+        db.add(
+            Release(
+                project_id=project.id,
+                title=r["name"],
+                slug=r["tag"].replace(".", "-"),
+                version=r["tag"],
+                body_markdown=r["body"],
+                body_html=render_markdown(r["body"]),
+                status=ReleaseStatus.PUBLISHED,
+                published_at=now - timedelta(days=r["published_days_ago"]),
+                ai_generated=False,
+            )
+        )
+
+    # The merged PRs waiting to be drafted (newest last, all after the last release).
+    for i, case in enumerate(CASES):
+        db.add(
+            IngestedItem(
+                project_id=project.id,
+                provider=IntegrationProvider.GITHUB,
+                external_id=str(case.number),
+                title=case.title,
+                body=case.body,
+                labels=case.labels,
+                author="sample-data",
+                url=f"https://github.com/{REPO}/pull/{case.number}",
+                merged_at=now - timedelta(minutes=10 * (len(CASES) - i)),
+            )
+        )
+
+    await db.commit()
     log.info("created demo workspace %s", org.slug)
     return user, project
 

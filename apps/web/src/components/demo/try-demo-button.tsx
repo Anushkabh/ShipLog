@@ -28,6 +28,16 @@ export function TryDemoButton({
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Pressing Back after the demo opens restores this page from the browser's
+  // back/forward cache — with the spinner still showing. Reset on restore.
+  React.useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setPending(false);
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
+
   async function start() {
     setPending(true);
     setError(null);
