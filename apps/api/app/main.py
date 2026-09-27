@@ -12,15 +12,28 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from app.config import settings
 
-# In prod the widget bundle sits on a CDN; locally the API serves it so the
-# embed snippet works out of the box (packages/widget/widget.js at the repo root).
-_WIDGET_JS = Path(__file__).resolve().parents[3] / "packages" / "widget" / "widget.js"
+
+def _find_widget_js() -> Path | None:
+    """Locate packages/widget/widget.js by walking up from this file.
+
+    Present in a repo checkout (local dev); absent in the API container, whose
+    build context is apps/api only — there the web app serves /widget.js as a
+    static file instead. Never raises: a missing file just means a 404 route.
+    """
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "packages" / "widget" / "widget.js"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+_WIDGET_JS = _find_widget_js()
 
 logging.basicConfig(level=logging.INFO)
 
@@ -67,6 +80,8 @@ async def health() -> dict:
 
 @app.get("/widget.js", include_in_schema=False)
 async def widget_js() -> FileResponse:
+    if _WIDGET_JS is None:
+        raise HTTPException(404, "widget.js is served by the web app in this deployment")
     return FileResponse(
         _WIDGET_JS,
         media_type="application/javascript",
