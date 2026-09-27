@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Widget demo — Acme Analytics</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; color: #0f172a; }
+      .hero { max-width: 720px; margin: 0 auto; padding: 80px 24px; }
+      h1 { font-size: 32px; margin: 0 0 8px; }
+      p { color: #475569; line-height: 1.6; }
+      code { background: #f1f5f9; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+      button.custom { margin-top: 16px; padding: 10px 16px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; cursor: pointer; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <div class="hero">
+      <h1>Acme Analytics</h1>
+      <p>
+        This is a pretend customer site. The floating <strong>“What’s new”</strong>
+        button in the corner is the Shiplog widget, loaded from the API and pulling
+        the live feed for the demo project.
+      </p>
+      <p>
+        Click it to open the changelog popover. The red badge shows how many
+        releases you haven’t seen yet; opening the panel clears it (stored in
+        <code>localStorage</code>).
+      </p>
+    </div>
+
+    <!--
+      The one-line embed. In production this src is your CDN/API origin; data-key
+      is the project's public key. data-api is only needed if the script is served
+      from a different origin than the API (as in this local demo).
+    -->
+    <script
+      src="http://localhost:8000/widget.js"
+      data-key="e6f78f3b163047c0aeb13ae5a9e523f9"
+      data-api="http://localhost:8000"
+      data-accent="#6366f1"
+      async
+    ></script>
+  </body>
+</html>

@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
     return [
       { source: "/auth/:path*", destination: `${api}/auth/:path*` },
       { source: "/api/:path*", destination: `${api}/api/:path*` },
+      // GitHub App setup callback — must share the session/state cookies.
+      { source: "/integrations/:path*", destination: `${api}/integrations/:path*` },
+      { source: "/widget.js", destination: `${api}/widget.js` },
     ];
   },
 };

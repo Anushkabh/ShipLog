@@ -1,0 +1,19 @@
+# Keep the build context (and image) lean and secret-free.
+.venv/
+__pycache__/
+*.pyc
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Never bake secrets into an image.
+.env
+.env.*
+!.env.example
+
+# Dev-only bits the runtime image doesn't need.
+scripts/
+Makefile
+*.md
+.git/
+.gitignore

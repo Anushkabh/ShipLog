@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     app_url: str = "http://localhost:3000"   # dashboard origin (Next.js)
     api_url: str = "http://localhost:8000"   # this API's public origin
     root_domain: str = "shiplog.app"         # tenant subdomains live under this
+    # False (default): host-only session cookie — correct when the dashboard
+    # proxies /auth + /api to the API (one origin, e.g. a single vercel.app URL).
+    # True: scope the cookie to .ROOT_DOMAIN for separate app./api. subdomains.
+    shared_cookie_domain: bool = False
 
     # ── Database ─────────────────────────────────────────────────────────
     # Local: docker-compose postgres. Prod: Neon POOLED (PgBouncer) endpoint.
@@ -69,8 +73,10 @@ class Settings(BaseSettings):
 
     @property
     def cookie_domain(self) -> str | None:
-        # Local dev: host-only cookie. Prod: share across *.shiplog.app.
-        return None if self.env == "local" else f".{self.root_domain}"
+        # Host-only unless explicitly sharing across app./api. subdomains.
+        if self.env == "local" or not self.shared_cookie_domain:
+            return None
+        return f".{self.root_domain}"
 
 
 @lru_cache

@@ -1,0 +1,17 @@
+# Container image for the async Lambda functions (webhook, email, scheduler).
+# Built once; CDK sets a different CMD (handler) per function. AWS's Lambda base
+# image ships the runtime interface client, so no extra wiring is needed.
+FROM public.ecr.aws/lambda/python:3.12
+
+# Resolve locked deps to a requirements file, then install into the task root.
+COPY pyproject.toml uv.lock ./
+RUN pip install --no-cache-dir uv && \
+    uv export --frozen --no-dev --no-emit-project --format requirements-txt -o requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt --target "${LAMBDA_TASK_ROOT}"
+
+# Application code (consumers, services, models). Migrations aren't needed at
+# runtime, so they're intentionally left out to keep the image lean.
+COPY app "${LAMBDA_TASK_ROOT}/app"
+
+# Default handler; overridden per-function by the CDK stack.
+CMD ["app.lambda_handlers.webhook_consumer"]
