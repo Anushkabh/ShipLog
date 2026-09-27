@@ -59,7 +59,14 @@ def email_consumer(event: dict, context: object) -> dict:
 
 def scheduler_handler(event: dict, context: object) -> dict:
     """EventBridge cron tick: publish any releases whose schedule has arrived."""
-    from app.services.scheduler import publish_due_releases
+    from datetime import UTC, datetime
 
-    published = asyncio.run(publish_due_releases())
-    return {"published": published}
+    from app.services.scheduler import publish_due_releases, purge_demos
+
+    async def tick() -> dict:
+        published = await publish_due_releases()
+        # The cron fires every minute; sweep expired demo sandboxes hourly.
+        purged = await purge_demos() if datetime.now(UTC).minute == 0 else 0
+        return {"published": published, "purged_demos": purged}
+
+    return asyncio.run(tick())

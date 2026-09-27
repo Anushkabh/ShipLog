@@ -15,14 +15,15 @@ import secrets
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 
 from app.config import settings
-from app.deps import CurrentUser, DbDep
+from app.deps import CurrentUser, DbDep, client_ip
 from app.models import Organization, OrganizationMember, OrgRole, User
 from app.schemas import OrgOut, UserOut
 from app.security import clear_session_cookie, issue_session, set_session_cookie
+from app.services import cache, demo
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -140,6 +141,26 @@ async def dev_login(db: DbDep, email: str = "dev@shiplog.app", name: str = "Dev 
     return resp
 
 
+@router.post("/demo")
+async def demo_login(request: Request, db: DbDep) -> JSONResponse:
+    """One-click demo: create a private, fully set-up sandbox and sign in to it.
+
+    No account needed. Rate-limited per IP; sandboxes are purged after 24h.
+    """
+    allowed = await cache.rate_limit(
+        f"demo:{client_ip(request)}", limit=5, window_seconds=3600
+    )
+    if not allowed:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many demo workspaces from your network — try again in an hour.",
+        )
+    user, project = await demo.create_demo_workspace(db)
+    resp = JSONResponse({"project_id": project.id})
+    set_session_cookie(resp, issue_session(user.id))
+    return resp
+
+
 @router.post("/logout")
 async def logout() -> Response:
     resp = Response(status_code=204)
@@ -148,8 +169,10 @@ async def logout() -> Response:
 
 
 @router.get("/me", response_model=UserOut)
-async def me(user: CurrentUser) -> User:
-    return user
+async def me(user: CurrentUser) -> UserOut:
+    out = UserOut.model_validate(user)
+    out.is_demo = demo.is_demo_user(user)
+    return out
 
 
 @router.get("/me/orgs", response_model=list[OrgOut])

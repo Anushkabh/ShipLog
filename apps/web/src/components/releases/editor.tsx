@@ -139,7 +139,13 @@ export function ReleaseEditor({
       if (!id) throw new Error("no release id");
       await api.publishRelease(projectId, id, { broadcast_email: broadcast });
       await globalMutate(`/api/projects/${projectId}/releases`);
-      router.push(`/projects/${projectId}/releases`);
+      // Back to the checklist if that's where the draft started, so step 3
+      // (public links + widget preview) is the next thing you see.
+      router.push(
+        cameFromSetup.current
+          ? `/projects/${projectId}/setup`
+          : `/projects/${projectId}/releases`,
+      );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't publish.");
       setPublishing(false);
@@ -195,10 +201,12 @@ export function ReleaseEditor({
   // AI draft straight away, once AI is known to be available. Runs once, and the
   // flag is dropped from the URL so a refresh doesn't draft a second time.
   const autoDrafted = React.useRef(false);
+  const cameFromSetup = React.useRef(false);
   React.useEffect(() => {
     if (autoDrafted.current || !isNew || !cred?.configured) return;
     if (searchParams.get("autodraft") !== "1") return;
     autoDrafted.current = true;
+    cameFromSetup.current = true;
     window.history.replaceState(null, "", window.location.pathname);
     void generate();
     // eslint-disable-next-line react-hooks/exhaustive-deps

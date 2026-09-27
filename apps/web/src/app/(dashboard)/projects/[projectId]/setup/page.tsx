@@ -13,6 +13,7 @@ import {
   ExternalLink,
   FlaskConical,
   Loader2,
+  MonitorSmartphone,
   Sparkles,
 } from "lucide-react";
 
@@ -24,6 +25,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConnectGithubButton } from "@/components/integrations/connect-github-button";
+import { useSession } from "@/components/auth/session";
+import { useOrigin } from "@/lib/use-origin";
 
 const GH_ERRORS: Record<string, string> = {
   state: "That connection link expired or didn't match. Try connecting again.",
@@ -37,6 +40,8 @@ const GH_ERRORS: Record<string, string> = {
 export default function SetupPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const searchParams = useSearchParams();
+  const { user } = useSession();
+  const isDemo = !!user?.is_demo;
   const connected = searchParams.get("connected");
   const ghError = searchParams.get("gh_error");
 
@@ -71,13 +76,16 @@ export default function SetupPage() {
     }
   }
 
-  const origin = typeof window === "undefined" ? "" : window.location.origin;
-  const hasChanges = !!s && (s.prs_pending > 0 || s.published > 0);
-  const step1Done = hasChanges;
-  const step2Done = !!s && s.releases > 0;
-  const step3Done = !!s && s.published > 0;
+  const origin = useOrigin();
+  // Steps track "the changes since your last release": a project with history
+  // (e.g. imported past releases) still has steps 2–3 open while PRs wait.
+  const caughtUp = !!s && s.prs_pending === 0 && s.published > 0;
+  const step1Done = !!s && (s.prs_pending > 0 || s.published > 0 || s.drafts > 0);
+  const step2Done = !!s && (s.drafts > 0 || caughtUp);
+  const step3Done = caughtUp && !!s && s.drafts === 0;
   const syncing = !!s && s.repos_connected > 0 && s.prs_pending === 0 && s.published === 0;
   const publicUrl = s ? `${origin}/c/${s.public_key}` : "";
+  const demoAppUrl = s ? `/demo/app?key=${s.public_key}` : "";
   const snippet = s
     ? `<script src="${origin}/widget.js" data-key="${s.public_key}" async></script>`
     : "";
@@ -99,6 +107,32 @@ export default function SetupPage() {
             Three steps from merged pull requests to a published, AI-written release note.
           </p>
         </div>
+
+        {isDemo && (
+          <Card className="border-primary/30 bg-primary-weak/40 p-5">
+            <h2 className="flex items-center gap-2 font-semibold">
+              <Sparkles className="size-4 text-primary-text" /> Welcome to the Shiplog demo
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              <strong className="text-foreground">Acme Analytics</strong> is a fictional SaaS
+              product. Since its last release, the team merged{" "}
+              <strong className="text-foreground">18 pull requests</strong> — new features and
+              fixes, plus internal chores (dependency bumps, refactors, CI tweaks) that customers
+              should never see. Shiplog already pulled them in and learned the product&rsquo;s
+              voice from its past releases.
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              <strong className="text-foreground">Your turn:</strong> click{" "}
+              <em>Draft my release</em> and watch the AI write the customer-facing note, then
+              publish it and open the customer app to see it pop up in the widget.
+            </p>
+            <p className="mt-2 text-xs text-subtle">
+              Things to notice: the chores are left out, and a PR titled &ldquo;Refactor billing
+              module&rdquo; still makes it in — because its description shows it actually
+              shipped annual plans.
+            </p>
+          </Card>
+        )}
 
         {connected !== null && (
           <Banner tone="ok">
@@ -181,15 +215,21 @@ export default function SetupPage() {
                   to continue.
                 </p>
               )}
-              {step1Done && s.ai_ready && s.prs_pending > 0 && (
+              {step1Done && s.ai_ready && s.prs_pending > 0 && s.drafts === 0 && (
                 <div>
-                  <Button asChild>
+                  <Button asChild size="lg">
                     <Link href={`/projects/${projectId}/releases/new?autodraft=1`}>
                       <Sparkles />
-                      {step2Done ? "Draft another release" : "Draft my release"}
+                      Draft my release
                     </Link>
                   </Button>
                 </div>
+              )}
+              {s.drafts > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  You have {s.drafts} unpublished {s.drafts === 1 ? "draft" : "drafts"} — open it
+                  from Releases to review and publish.
+                </p>
               )}
               {step2Done && (
                 <Link
@@ -209,10 +249,18 @@ export default function SetupPage() {
               title="Publish and share"
               body="Review the draft, then publish. Your hosted changelog goes live instantly, and you can embed an in-app “What’s new” widget with one line."
             >
-              {step3Done ? (
+              {s.published > 0 ? (
                 <div className="flex flex-col gap-3">
                   <CopyRow label="Public changelog" value={publicUrl} href={publicUrl} />
-                  <CopyRow label="In-app widget" value={snippet} mono />
+                  <CopyRow label="In-app widget (one line)" value={snippet} mono />
+                  <div>
+                    <Button asChild variant="accent">
+                      <a href={demoAppUrl} target="_blank" rel="noopener">
+                        <MonitorSmartphone />
+                        See it inside a customer&rsquo;s app
+                      </a>
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <p className="text-sm text-subtle">

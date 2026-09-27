@@ -7,6 +7,7 @@ import { api, API_URL } from "@/lib/api";
 import { SessionProvider, useSession } from "@/components/auth/session";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { TryDemoButton } from "@/components/demo/try-demo-button";
 
 export default function LoginPage() {
   return (
@@ -26,6 +27,12 @@ function LoginInner() {
   const { user, loading } = useSession();
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  // Dev login only exists on a local API (it 404s in prod), so only offer it
+  // when the dashboard itself is running on localhost.
+  const [isLocal, setIsLocal] = React.useState(false);
+  React.useEffect(() => {
+    setIsLocal(["localhost", "127.0.0.1"].includes(window.location.hostname));
+  }, []);
 
   // Already signed in → bounce to the dashboard.
   React.useEffect(() => {
@@ -73,30 +80,29 @@ function LoginInner() {
 
           <div className="flex items-center gap-3 py-1 text-xs text-subtle">
             <span className="h-px flex-1 bg-border" />
-            local development
+            or just look around
             <span className="h-px flex-1 bg-border" />
           </div>
 
-          <Button
-            variant="ghost"
-            size="lg"
-            className="w-full"
-            onClick={devLogin}
-            disabled={pending}
-          >
-            {pending ? <Loader2 className="animate-spin" /> : <Rocket />}
-            Continue as Dev User
-          </Button>
+          <TryDemoButton variant="accent" label="Try the live demo — no signup" fullWidth />
+
+          {isLocal && (
+            <Button
+              variant="ghost"
+              size="lg"
+              className="w-full"
+              onClick={devLogin}
+              disabled={pending}
+            >
+              {pending ? <Loader2 className="animate-spin" /> : <Rocket />}
+              Continue as Dev User (local only)
+            </Button>
+          )}
 
           {error && (
             <p className="text-center text-sm text-destructive">{error}</p>
           )}
         </div>
-
-        <p className="mt-8 text-center text-xs text-subtle">
-          Dev login is available only when the API runs with{" "}
-          <code className="font-mono">env=local</code>.
-        </p>
       </div>
     </main>
   );

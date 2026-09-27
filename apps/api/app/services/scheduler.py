@@ -25,6 +25,19 @@ from app.services.publish import publish_release
 log = logging.getLogger("shiplog.scheduler")
 
 TICK_SECONDS = 60
+PURGE_EVERY_SECONDS = 3600  # expired demo workspaces are swept hourly
+
+
+async def purge_demos() -> int:
+    """Delete demo sandboxes past their TTL. Best-effort; never raises."""
+    from app.services.demo import purge_expired_demos  # avoid import cycle
+
+    try:
+        async with SessionLocal() as db:
+            return await purge_expired_demos(db)
+    except Exception:
+        log.exception("demo purge failed")
+        return 0
 
 
 async def publish_due_releases() -> int:
@@ -63,11 +76,16 @@ async def publish_due_releases() -> int:
 async def run_scheduler(stop: asyncio.Event) -> None:
     """Tick every TICK_SECONDS until `stop` is set. Errors never kill the loop."""
     log.info("scheduler loop started (every %ss)", TICK_SECONDS)
+    last_purge = 0.0
+    loop = asyncio.get_running_loop()
     while not stop.is_set():
         try:
             await publish_due_releases()
         except Exception:
             log.exception("scheduler tick failed")
+        if loop.time() - last_purge >= PURGE_EVERY_SECONDS:
+            await purge_demos()
+            last_purge = loop.time()
         try:
             await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)
         except TimeoutError:

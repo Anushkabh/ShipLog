@@ -101,6 +101,8 @@ export const api = {
   // ── Auth ──────────────────────────────────────────────────────────────
   me: () => request<User>("/auth/me"),
   myOrgs: () => request<Org[]>("/auth/me/orgs"),
+  demoLogin: () =>
+    request<{ project_id: string }>("/auth/demo", { method: "POST" }),
   devLogin: (email?: string, name?: string) =>
     request<void>("/auth/dev-login", {
       method: "POST",

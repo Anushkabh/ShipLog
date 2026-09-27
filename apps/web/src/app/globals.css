@@ -118,8 +118,12 @@
     monospace;
 }
 
-* {
-  border-color: var(--border);
+/* In @layer base so border-color utilities (border-primary/40, border-slate-200,
+   …) can override it — unlayered CSS beats every Tailwind utility in v4. */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }
 
 html {

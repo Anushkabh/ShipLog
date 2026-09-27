@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 
 import { SessionProvider, useSession } from "@/components/auth/session";
 import { Sidebar } from "@/components/shell/sidebar";
+import { DemoBanner } from "@/components/demo/demo-banner";
 
 export default function DashboardLayout({
   children,
@@ -40,7 +41,10 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto flex min-h-screen max-w-[1360px]">
       <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        {user.is_demo && <DemoBanner />}
+        {children}
+      </div>
     </div>
   );
 }

@@ -13,7 +13,7 @@ import secrets
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import select
 
-from app.deps import DbDep
+from app.deps import DbDep, client_ip
 from app.models import Project, Subscriber
 from app.schemas import SubscribeRequest
 from app.services import cache, crypto
@@ -22,22 +22,13 @@ from app.services.email import send_email
 router = APIRouter(prefix="/api/v1/widget", tags=["subscribers"])
 
 
-def _client_ip(request: Request) -> str:
-    # Behind Fly/Railway/API Gateway the real client is the first hop of
-    # X-Forwarded-For; direct connections fall back to the socket peer.
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
 @router.post("/{public_key}/subscribe", status_code=status.HTTP_202_ACCEPTED)
 async def subscribe(
     public_key: str, body: SubscribeRequest, db: DbDep, request: Request
 ) -> dict:
     # Public + sends email → throttle per IP so it can't be used to spam.
     if not await cache.rate_limit(
-        f"subscribe:{_client_ip(request)}", limit=10, window_seconds=3600
+        f"subscribe:{client_ip(request)}", limit=10, window_seconds=3600
     ):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,

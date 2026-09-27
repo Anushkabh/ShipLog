@@ -31,6 +31,7 @@ class SetupStatus(BaseModel):
     prs_pending: int      # merged PRs since the last published release
     releases: int
     published: int
+    drafts: int           # saved but not yet published
     profile_set: bool
     ai_ready: bool
     public_key: str

@@ -94,3 +94,13 @@ async def user_orgs(db: AsyncSession, user: User) -> list[Organization]:
             .where(OrganizationMember.user_id == user.id)
         )
     )
+
+
+def client_ip(request: Request) -> str:
+    """The caller's IP for rate limiting. Behind proxies (Vercel → Render, Fly,
+    API Gateway) the real client is the first hop of X-Forwarded-For; direct
+    connections fall back to the socket peer."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"

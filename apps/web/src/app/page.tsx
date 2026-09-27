@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+
+import { TryDemoButton } from "@/components/demo/try-demo-button";
 import {
   ArrowRight,
   Code2,
@@ -94,9 +96,10 @@ export default function LandingPage() {
           </nav>
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
-            <Button asChild size="sm">
+            <Button asChild size="sm" variant="ghost">
               <Link href="/login">Sign in</Link>
             </Button>
+            <TryDemoButton size="sm" label="Try demo" />
           </div>
         </div>
       </header>
@@ -117,19 +120,15 @@ export default function LandingPage() {
               PRs, and publish to a hosted site, an embeddable widget, and email
               subscribers — from one place.
             </p>
-            <div className="mt-7 flex flex-wrap items-center gap-3">
-              <Button asChild size="lg">
-                <Link href="/login">
-                  Get started
-                  <ArrowRight />
-                </Link>
-              </Button>
+            <div className="mt-7 flex flex-wrap items-start gap-3">
+              <TryDemoButton />
               <Button asChild size="lg" variant="ghost">
-                <a href="#how">See how it works</a>
+                <Link href="/login">Sign in with GitHub</Link>
               </Button>
             </div>
             <p className="mt-4 text-xs text-subtle">
-              No credit card. Runs on always-free tiers.
+              No signup for the demo — you get a private sandbox with sample
+              pull requests and watch the AI write a release note in seconds.
             </p>
           </div>
 
@@ -212,12 +211,15 @@ export default function LandingPage() {
               Spin it up locally in minutes, or self-host it for good. Your
               repos, your keys, your data.
             </p>
-            <Button asChild size="lg">
-              <Link href="/login">
-                Get started
-                <ArrowRight />
-              </Link>
-            </Button>
+            <div className="flex flex-wrap items-start justify-center gap-3">
+              <TryDemoButton />
+              <Button asChild size="lg" variant="ghost">
+                <Link href="/login">
+                  Sign in with GitHub
+                  <ArrowRight />
+                </Link>
+              </Button>
+            </div>
           </div>
         </section>
       </main>

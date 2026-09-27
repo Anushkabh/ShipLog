@@ -123,7 +123,14 @@ async def setup_status(db, project: Project) -> dict:
             Release.project_id == project.id, Release.status == ReleaseStatus.PUBLISHED
         )
     )
+    drafts = await db.scalar(
+        select(func.count()).select_from(Release).where(
+            Release.project_id == project.id,
+            Release.status.in_([ReleaseStatus.DRAFT, ReleaseStatus.SCHEDULED]),
+        )
+    )
     return {
+        "drafts": drafts or 0,
         "repos_connected": repos or 0,
         "prs_pending": pending or 0,
         "releases": releases or 0,

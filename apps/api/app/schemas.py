@@ -20,6 +20,7 @@ class UserOut(ORMModel):
     name: str | None
     email: str
     image: str | None
+    is_demo: bool = False  # signed into a throwaway demo workspace
 
 
 class OrgOut(ORMModel):

@@ -13,6 +13,7 @@ export interface User {
   name: string | null;
   email: string;
   image: string | null;
+  is_demo: boolean; // signed into a throwaway demo workspace
 }
 
 export interface Org {
@@ -145,6 +146,7 @@ export interface SetupStatus {
   prs_pending: number; // merged PRs since the last published release
   releases: number;
   published: number;
+  drafts: number; // saved but not yet published
   profile_set: boolean;
   ai_ready: boolean;
   public_key: string;
