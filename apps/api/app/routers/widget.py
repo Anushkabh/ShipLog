@@ -39,7 +39,9 @@ def _site_url(project: Project) -> str:
 
     if project.custom_domain and project.domain_verified:
         return f"https://{project.custom_domain}"
-    return f"https://{project.slug}.{settings.root_domain}"
+    # The hosted changelog is the dashboard's /c/<publicKey> route (per-release
+    # permalinks at /c/<publicKey>/<slug>), so links work on any single-URL deploy.
+    return f"{settings.app_url.rstrip('/')}/c/{project.public_key}"
 
 
 def _to_feed_release(r: Release, site: str) -> FeedRelease:
